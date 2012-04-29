@@ -5,11 +5,11 @@ A soap client for the Cvent Event Registration API
 
 How to use
 ----------
-require('CventClient.class.php')
-$cc = new CventClient();
-$cc->Login($account, $username, $password);
-$events = $cc->GetUpcomingEvents();
-print_r($events);
+	require('CventClient.class.php')
+	$cc = new CventClient();
+	$cc->Login($account, $username, $password);
+	$events = $cc->GetUpcomingEvents();
+	print_r($events);
 
 License
 -------
