@@ -5,11 +5,9 @@
 ** Description: A php soap client for the Cvent API. 
 **
 ** To Do:
-**     - replace 'paging' with helper function
-**     - add additional support
+**     - add additional remote functions support
 **
 */
-
 ini_set('soap.wsdl_cache_enabled', 1); 
 ini_set('soap.wsdl_cache_ttl', 86400); //default: 86400, in seconds
 
@@ -85,9 +83,8 @@ class CventClient extends SoapClient {
 		if(sizeof($events) != 1) throw new Exception('CventClient::GetEventById: EventId '.$eventId.' not found');
 		return $events[0];
 	}
+	
 	public function GetUpcomingEvents() {
-		# note: typicaly a limit of 25,000 ids returned;
-		# note: maximum 256 search filters
 		$criteria->ObjectType = 'Event';
 		$criteria->CvSearchObject->SearchType = 'AndSearch';
 		$criteria->CvSearchObject->Filter[0]->Field = 'EventStartDate';
@@ -97,28 +94,43 @@ class CventClient extends SoapClient {
 		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
 		return false;
 	}
+	
 	public function GetNumberOfRegistrations($eventId) {
-		# note: typicaly a limit of 25,000 ids returned;
 		$criteria->ObjectType = 'Registration';
 		$criteria->CvSearchObject->Filter[0]->Field = 'EventId';
 		$criteria->CvSearchObject->Filter[0]->Operator = 'Equals';
 		$criteria->CvSearchObject->Filter[0]->Value = $eventId;
 		$response = $this->client->Search($criteria);
-		if(isset($response->SearchResult->Id)) return sizeof($response->SearchResult->Id);
+		if(isset($response->SearchResult->Id)) return count($response->SearchResult->Id);
 		return false;
 	}
+	
 	public function GetNumberOfGuests($eventId) {
-		# note: typicaly a limit of 25,000 ids returned;
 		$criteria->ObjectType = 'Guest';
 		$criteria->CvSearchObject->Filter[0]->Field = 'EventId';
 		$criteria->CvSearchObject->Filter[0]->Operator = 'Equals';
 		$criteria->CvSearchObject->Filter[0]->Value = $eventId;
 		$response = $this->client->Search($criteria);
-		if(isset($response->SearchResult->Id)) return sizeof($response->SearchResult->Id);
+		if(isset($response->SearchResult->Id)) return count($response->SearchResult->Id);
 		return false;
 	}
+	
+	public function GetAllDistributionLists() {
+		// needs to be tested
+		$criteria->ObjectType = 'DistributionList';
+		$criteria->CvSearchObject->SearchType = 'OrSearch';
+		$criteria->CvSearchObject->Filter[0]->Field = 'DistributionListName';
+		$criteria->CvSearchObject->Filter[0]->Operator = 'Equals';
+		$criteria->CvSearchObject->Filter[0]->Value = 'Something';
+		$criteria->CvSearchObject->Filter[1]->Field = 'DistributionListName';
+		$criteria->CvSearchObject->Filter[1]->Operator = 'Not Equal to';
+		$criteria->CvSearchObject->Filter[1]->Value = 'Something';
+		$response = $this->client->Search($criteria);
+		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
+		return false;
+	}
+	
 	public function SearchContactBySourceId($remaxId) {
-		# note: typicaly a limit of 25,000 ids returned;
 		$criteria->ObjectType = 'Contact';
 		$criteria->CvSearchObject->SearchType = 'AndSearch';
 		$criteria->CvSearchObject->Filter[0]->Field = 'SourceId';
@@ -130,7 +142,6 @@ class CventClient extends SoapClient {
 	}
 	
 	public function SearchContactsByGroupId($groupId) {
-		# note: typicaly a limit of 25,000 ids returned;
 		$criteria->ObjectType = 'Contact';
 		$criteria->CvSearchObject->SearchType = 'AndSearch';
 		$criteria->CvSearchObject->Filter[0]->Field = 'GroupId';
@@ -140,86 +151,51 @@ class CventClient extends SoapClient {
 		return $response;
 	}
 	
-	public function RetrieveEvents($eventIds) {
-		if(!is_array($eventIds)) $eventIds = array($eventIds); // safety measure
-		$total = sizeof($eventIds);
-		$pages = ceil($total / $this->RESULTS_PER_PAGE);
-		$remainder = $total % $this->RESULTS_PER_PAGE;
-		$events = array();
-		for($i = 0; $i < $pages; $i++) {
-			$x = $i * $this->RESULTS_PER_PAGE;
-			$y = $this->RESULTS_PER_PAGE;
-			if($pages == $i + 1) $y = $remainder;
-			if ($this->debug) print "CventClient::RetrieveEvents::Page $i, retrieving $y Ids starting at array index $x<br/>";
-			$batch = array_slice($eventIds, $x, $y);		
+	private function RetrieveAllPages($objecttype, $ids) {
+		if(!is_array($ids)) $ids = array($ids); // safety measure
+		$results = array();
+		for($i=0; $i < count($ids); $i += $this->RESULTS_PER_PAGE) {
+			if ($this->debug) print "CventClient::RetrievePages:: retrieving $objecttype using Ids from $i to ".($i+$this->RESULTS_PER_PAGE)."<br/>";
+			$batch = array_slice($ids, $i, $i + $this->RESULTS_PER_PAGE);
 			$criteria = NULL;
-			$tmp = NULL;
-			$criteria->ObjectType = 'Event';
+			$criteria->ObjectType = $objecttype;
 			$criteria->Ids = $batch;
 			$tmp = $this->client->Retrieve($criteria);
-			if(isset($tmp->RetrieveResult->CvObject)) {
-				if(is_array($tmp->RetrieveResult->CvObject)) {
-					$events = array_merge($events, $tmp->RetrieveResult->CvObject);
-				} else {
-					$events = array_merge($events, array($tmp->RetrieveResult->CvObject));
-				}
-			} 
+			if(is_array($tmp->RetrieveResult->CvObject)) {
+				$results = array_merge($results, $tmp->RetrieveResult->CvObject);
+			} else {
+				$results = array_merge($results, array($tmp->RetrieveResult->CvObject));
+			}
 		}
-		return $events;
+		return $results;
+	}
+
+	public function RetrieveEvents($eventIds) {
+		return $this->RetrieveAllPages('Event', $eventIds);
+	}
+
+	public function RetrieveContacts($contactIds) {
+		return $this->RetrieveAllPages('Contact', $contactIds);
+	}
+	public function RetrieveDistributionLists($dIds) {
 	}
 	
-	public function RetrieveContacts($contactIds) {
-		if(!is_array($contactIds)) $eventIds = array($contactIds); // safety measure
-		$total = sizeof($contactIds);
-		$pages = ceil($total / $this->RESULTS_PER_PAGE);
-		$remainder = $total % $this->RESULTS_PER_PAGE;
-		$contacts = array();
-		for($i = 0; $i < $pages; $i++) {
-			$x = $i * $this->RESULTS_PER_PAGE;
-			$y = $this->RESULTS_PER_PAGE;
-			if($pages == $i + 1) $y = $remainder;
-			if ($this->debug) print "CventClient::RetrieveContacts::Page $i, retrieving $y Ids starting at array index $x<br/>";
-			$batch = array_slice($contactIds, $x, $y);		
-			$criteria = NULL;
-			$tmp = NULL;
-			$criteria->ObjectType = 'Contact';
-			$criteria->Ids = $batch;
-			$tmp = $this->client->Retrieve($criteria);
-			if(isset($tmp->RetrieveResult->CvObject)) {
-				if(is_array($tmp->RetrieveResult->CvObject)) {
-					$contacts = array_merge($contacts, $tmp->RetrieveResult->CvObject);
-				} else {
-					$contacts = array_merge($contacts, array($tmp->RetrieveResult->CvObject));
-				}
-			} 
-		}
-		return $contacts;
-	}		
-	
 	public function RetrieveContactBySourceId($remaxid) {
-		$result = $this->SearchContactBySourceId($remaxid);
-		
+		$result = $this->SearchContactBySourceId($remaxid);		
 		if($result === false) throw new Exception("CventClient::RetrieveContactBySourceId::$remaxid not found, cannot retrieve");
 		$ids[] = $result->SearchResult->Id;
-		$result = $this->RetrieveContacts($ids);
-		
+		$result = $this->RetrieveContacts($ids);		
 		return $result;
 	}
 	
 	public function RetrieveContactIdsBySourceIds($sourceIds) {
-		$total = sizeof($sourceIds);
-		$pages = ceil($total / $this->MAX_FILTER_SIZE);
-		$remainder = $total % $this->MAX_FILTER_SIZE;
+		// needs to be tested
+		$total = count($sourceIds);
 		$contactIds = array();
-		
-		for($i = 0; $i < $pages; $i++) {
-			$x = $i * $this->MAX_FILTER_SIZE;
-			$y = $this->MAX_FILTER_SIZE;
-			if($pages == $i + 1) $y = $remainder;
-			if ($this->debug) print "CventClient::RetrieveContactIdsBySourceIds::Page $i, retrieving $y Ids starting at array index $x<br/>";
-			$batch = array_slice($sourceIds, $x, $y);		
+		for($i = 0; $i < count($sourceIds); $i += $this->MAX_FILTER_SIZE) {
+			if ($this->debug) print "CventClient::RetrieveContactIdsBySourceIds:: retrieving contactIds from $i to ".($i + $this->MAX_FILTER_SIZE)."<br/>";
+			$batch = array_slice($sourceIds, $i, $i + $this->MAX_FILTER_SIZE);		
 			$criteria = NULL;
-			$tmp = NULL;
 			$criteria->ObjectType = 'Contact';
 			$criteria->CvSearchObject->SearchType = 'OrSearch';	
 			for($j=0; $j < sizeof($batch); $j++) {
@@ -229,16 +205,15 @@ class CventClient extends SoapClient {
 			}
 			$tmp = $this->client->Search($criteria);
 			$tmp = $tmp->SearchResult->Id;
-			if(isset($tmp)) {
-				if(is_array($tmp)) {
-					$contactIds = array_merge($contactIds, $tmp);
-				} else {
-					$contactIds = array_merge($contactIds, array($tmp));
-				}
+			if(is_array($tmp)) {
+				$contactIds = array_merge($contactIds, $tmp);
+			} else {
+				$contactIds = array_merge($contactIds, array($tmp));
 			}
 		}
 		return $contactIds;			
 	}
+	
 	
 	public function CreateUpdateContacts($type, $contacts) {
 		# type = 'Create' or 'Update'
@@ -290,51 +265,7 @@ class CventClient extends SoapClient {
 		if(sizeof($passed) + sizeof($failed) != $total) throw new Exception("CventClient::CreateUpdateContacts:: Total pass+fails does not match total contacts.");
 		return array('passed' => $passed, 'failed' => $failed); 
 	}
-	
-	/*
-	public function UpdateContacts($contacts) {
-		$total = sizeof($contacts);
-		$pages = ceil($total / $this->RESULTS_PER_PAGE);
-		$remainder = $total % $this->RESULTS_PER_PAGE;
-		$passed = array();
-		$failed = array();
-		for($i = 0; $i < $pages; $i++) {
-			$x = $i * $this->RESULTS_PER_PAGE;
-			$y = $this->RESULTS_PER_PAGE;
-			if($pages == $i + 1) $y = $remainder;
-			if ($this->debug) print "CventClient::UpdateContacts::Page $i, creating $y Ids starting at array index $x<br/>";
-			$batch = array_slice($contacts, $x, $y);		
-			$criteria =  NULL;
-			$tmp = NULL;
-			$criteria->Contacts = $batch;		
-			# process batch
-			$tmp = $this->client->UpdateContact($criteria);
-			if(isset($tmp->UpdateContactResult->UpdateContactResult)) {
-				if(is_array($tmp->UpdateContactResult->UpdateContactResult)) {
-					$result = $tmp->UpdateContactResult->UpdateContactResult;				
-				} else {
-					$result = array($tmp->UpdateContactResult->UpdateContactResult);
-				}
-				if(sizeof($result) != sizeof($batch)) throw new Exception("CventClient::UpdateContacts:: Size of results mismatch with size of batch");
-				# organize pass/fails
-				$pass = array();
-				$fail = array();
-				for($j = 0; $j < sizeof($result); $j++) {
-					if(isset($result[$j]->Errors->Error)) {
-						$fail[] = array('contact' => $batch[$j], 'result' => $result[$j]);
-					} else {
-						$pass[] = array('contact' => $batch[$j], 'result' => $result[$j]);
-					}
-				}
-				$failed = array_merge($failed, $fail);
-				$passed = array_merge($passed, $pass);			
-			} 
-		}
-		if(sizeof($passed) + sizeof($failed) != $total) throw new Exception("CventClient::UpdateContacts:: Total pass+fails does not match total contacts.");
-		return array('passed' => $passed, 'failed' => $failed); 
-	}
-	*/
-	
+		
 	# utilities		
 	public function webServiceDetails() {
 		print "<strong>Functions:</strong><pre>";
