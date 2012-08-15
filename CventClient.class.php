@@ -6,25 +6,25 @@
 **
 ** To Do:
 **     - add additional remote functions support
+**     - add logging capabilities	 
+**     - proper docs format
+**     
+** Notes:
+**     - Search - 25,000 IDs limit not handled
+**     - CreateContact, UpdateContact, DeleteContact, CreateContactGroup, TransferInvitee, and SendEmail - 200 object limit not handled
+**     - GetUpdated - 10,000 IDs limit not handled
+** ... Typicaly a limit of 25,000 ids returned, maximum 256 search filter, but depends on Client accounts
 **
 */
 ini_set('soap.wsdl_cache_enabled', 1); 
 ini_set('soap.wsdl_cache_ttl', 86400); //default: 86400, in seconds
-
-class SoapDebugClient extends SoapClient {
-	public function __doRequest($request, $location, $action, $version, $one_way = 0) {
-		//if (DEBUG) print htmlspecialchars($request);
-		flush();
-		return parent::__doRequest($request, $location, $action, $version);
-	}	
-}
 
 class CventClient extends SoapClient {
 	public $client;
 	public $ServerURL;
 	public $CventSessionHeader;
 	public $debug = false;
-	public $MAX_FILTER_SIZE = 100;# 256 doesn't seem to work.
+	public $MAX_FILTER_SIZE = 100; # 256 doesn't seem to work.
 	public $RESULTS_PER_PAGE = 200;
 	
 	public function CventClient() {
@@ -69,117 +69,91 @@ class CventClient extends SoapClient {
 	}
 	
 	public function DescribeGlobal() {
-		print "CventClient::DescribeGlobal:<br/>";
 		$response = $this->client->DescribeGlobal();
-		print "<pre>";
-		print_r($response);
-		print "</pre>";
-	}			
+		return $response;
+	}
+	
+	public function DescribeCvObject($objectTypes) {
+		$params->ObjectTypes = $objectTypes;
+		$response = $this->client->DescribeCvObject($params);
+		return $response;
+	}		
 	
 	public function GetEventById($eventId) {
-		# note: typicaly a limit of 25,000 ids returned;
-		# note: maximum 256 search filters
 		$events = $this->RetrieveEvents($eventId);	
 		if(sizeof($events) != 1) throw new Exception('CventClient::GetEventById: EventId '.$eventId.' not found');
 		return $events[0];
 	}
 	
 	public function GetUpcomingEvents() {
-		$criteria->ObjectType = 'Event';
-		$criteria->CvSearchObject->SearchType = 'AndSearch';
-		$criteria->CvSearchObject->Filter[0]->Field = 'EventStartDate';
-		$criteria->CvSearchObject->Filter[0]->Operator = 'Greater than';
-		$criteria->CvSearchObject->Filter[0]->Value = date('Y-m-d', strtotime('-14 days')).'T00:00:00'; // '2011-10-31T00:00:00';
-		$response = $this->client->Search($criteria);
+		// needs to be tested
+		$v = date('Y-m-d', strtotime('-14 days')).'T00:00:00'; // '2011-10-31T00:00:00';
+		$response = $this->SearchByFilter('Event', 'AndSearch', array((object) array('Field' => 'EventStartDate', 'Operator' => 'Greater than', 'Value' => $v)));
 		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
 		return false;
 	}
 	
 	public function GetNumberOfRegistrations($eventId) {
-		$criteria->ObjectType = 'Registration';
-		$criteria->CvSearchObject->Filter[0]->Field = 'EventId';
-		$criteria->CvSearchObject->Filter[0]->Operator = 'Equals';
-		$criteria->CvSearchObject->Filter[0]->Value = $eventId;
-		$response = $this->client->Search($criteria);
+		// needs to be tested
+		$response = $this->SearchByFilter('Registration', 'AndSearch', array((object) array('Field' => 'EventId', 'Operator' => 'Equals', 'Value' => $eventId)));
 		if(isset($response->SearchResult->Id)) return count($response->SearchResult->Id);
 		return false;
 	}
 	
 	public function GetNumberOfGuests($eventId) {
-		$criteria->ObjectType = 'Guest';
-		$criteria->CvSearchObject->Filter[0]->Field = 'EventId';
-		$criteria->CvSearchObject->Filter[0]->Operator = 'Equals';
-		$criteria->CvSearchObject->Filter[0]->Value = $eventId;
-		$response = $this->client->Search($criteria);
+		// needs to be tested
+		$response = $this->SearchByFilter('Guest', 'AndSearch', array((object) array('Field' => 'EventId', 'Operator' => 'Equals', 'Value' => $eventId)));
 		if(isset($response->SearchResult->Id)) return count($response->SearchResult->Id);
 		return false;
 	}
 	
-	public function GetAllDistributionLists() {
-		// needs to be tested
-		$criteria->ObjectType = 'DistributionList';
-		$criteria->CvSearchObject->SearchType = 'OrSearch';
-		$criteria->CvSearchObject->Filter[0]->Field = 'DistributionListName';
-		$criteria->CvSearchObject->Filter[0]->Operator = 'Equals';
-		$criteria->CvSearchObject->Filter[0]->Value = 'Something';
-		$criteria->CvSearchObject->Filter[1]->Field = 'DistributionListName';
-		$criteria->CvSearchObject->Filter[1]->Operator = 'Not Equal to';
-		$criteria->CvSearchObject->Filter[1]->Value = 'Something';
-		$response = $this->client->Search($criteria);
+	public function SearchAllDistributionLists() {
+		$response = $this->SearchByFilter('DistributionList', 'OrSearch', array(
+							(object) array('Field' => 'DistributionListName', 'Operator' => 'Equals', 'Value' => 'Something'),
+			      				(object) array('Field' => 'DistributionListName', 'Operator' => 'Not Equal to', 'Value' => 'Something')));
 		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
 		return false;
 	}
-	
+
 	public function SearchContactBySourceId($remaxId) {
-		$criteria->ObjectType = 'Contact';
-		$criteria->CvSearchObject->SearchType = 'AndSearch';
-		$criteria->CvSearchObject->Filter[0]->Field = 'SourceId';
-		$criteria->CvSearchObject->Filter[0]->Operator = 'Equals';
-		$criteria->CvSearchObject->Filter[0]->Value = $remaxId;
-		$response = $this->client->Search($criteria);
+		$response = $this->SearchByFilter('Contact', 'AndSearch', array((object) array('Field' => 'SourceId', 'Operator' => 'Equals', 'Value' => $remaxId)));
 		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
 		return false;
 	}
 	
 	public function SearchContactsByGroupId($groupId) {
-		$criteria->ObjectType = 'Contact';
-		$criteria->CvSearchObject->SearchType = 'AndSearch';
-		$criteria->CvSearchObject->Filter[0]->Field = 'GroupId';
-		$criteria->CvSearchObject->Filter[0]->Operator = 'Equals';
-		$criteria->CvSearchObject->Filter[0]->Value = $groupId;
-		$response = $this->client->Search($criteria);
-		return $response;
-	}
-	
-	private function RetrieveAllPages($objecttype, $ids) {
-		if(!is_array($ids)) $ids = array($ids); // safety measure
-		$results = array();
-		for($i=0; $i < count($ids); $i += $this->RESULTS_PER_PAGE) {
-			if ($this->debug) print "CventClient::RetrievePages:: retrieving $objecttype using Ids from $i to ".($i+$this->RESULTS_PER_PAGE)."<br/>";
-			$batch = array_slice($ids, $i, $i + $this->RESULTS_PER_PAGE);
-			$criteria = NULL;
-			$criteria->ObjectType = $objecttype;
-			$criteria->Ids = $batch;
-			$tmp = $this->client->Retrieve($criteria);
-			if(is_array($tmp->RetrieveResult->CvObject)) {
-				$results = array_merge($results, $tmp->RetrieveResult->CvObject);
-			} else {
-				$results = array_merge($results, array($tmp->RetrieveResult->CvObject));
-			}
-		}
-		return $results;
+		$response = $this->SearchByFilter('Contact', 'AndSearch', array((object) array('Field' => 'GroupId', 'Operator' => 'Equals', 'Value' => $groupId)));
+		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
+		return false;
 	}
 
-	public function RetrieveEvents($eventIds) {
-		return $this->RetrieveAllPages('Event', $eventIds);
+	public function SearchContactsByDistributionListId($distId) {
+		$response = $this->SearchByFilter('Contact', 'AndSearch', array((object) array('Field' => 'DistId', 'Operator' => 'Equals', 'Value' => $distId)));
+		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
+		return false;
 	}
 
-	public function RetrieveContacts($contactIds) {
-		return $this->RetrieveAllPages('Contact', $contactIds);
-	}
-	public function RetrieveDistributionLists($dIds) {
+	public function SearchContactByDistributionListIdAndEmail($distId, $email) {
+		// name implies email is unique
+		$response = $this->SearchByFilter('Contact', 'AndSearch', array(
+							(object) array('Field' => 'DistId', 'Operator' => 'Equals', 'Value' => $distId),
+							(object) array('Field' => 'EmailAddress', 'Operator' => 'Equals', 'Value' => $email)));
+		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
+		return false;
 	}
 	
+
+	# Retrieve 
+	public function RetrieveEvents($ids) {
+		return $this->RetrieveAllPages('Event', $ids);
+	}
+
+	public function RetrieveContacts($ids) {
+		return $this->RetrieveAllPages('Contact', $ids);
+	}
+	public function RetrieveDistributionLists($ids) {
+		return $this->RetrieveAllPages('DistributionList', $ids);
+	}
 	public function RetrieveContactBySourceId($remaxid) {
 		$result = $this->SearchContactBySourceId($remaxid);		
 		if($result === false) throw new Exception("CventClient::RetrieveContactBySourceId::$remaxid not found, cannot retrieve");
@@ -190,6 +164,7 @@ class CventClient extends SoapClient {
 	
 	public function RetrieveContactIdsBySourceIds($sourceIds) {
 		// needs to be tested
+		// this returns Ids, not Objects, for consistency should be renamed SearchContactsBySourceIds($sourceIds)
 		$total = count($sourceIds);
 		$contactIds = array();
 		for($i = 0; $i < count($sourceIds); $i += $this->MAX_FILTER_SIZE) {
@@ -213,10 +188,25 @@ class CventClient extends SoapClient {
 		}
 		return $contactIds;			
 	}
+		
 	
-	
+	# Create or Updates
+	public function AddContactsToDistributionList($distId, $contactIds) {
+		if(!is_array($contactIds)) $contactIds = array($contactIds); // safety measurei, contactId must be CvObject type
+		$response = $this->client->ManageDistributionListMembers((object) array('DistListId' => $distId, 'Action' => 'Add', 'CvObjects' => $contactIds));	
+		if(isset($response->ManageDistributionListMembersResult->ManageDistributionListResult)) return $response->ManageDistributionListMembersResult->ManageDistributionListResult;
+		return false;
+	}
+ 	public function AddContactToDistributionListByEmailAddress($distId, $email) {
+		$response = $this->SearchByFilter('Contact', 'AndSearch', array((object) array('Field' => 'EmailAddress', 'Operator' => 'Equals', 'Value' => $email)));
+		if(!isset($response->SearchResult->Id)) return false;
+		$contactId =  $response->SearchResult->Id;
+		return $this->AddContactsToDistributionList($distId, array((object) array('Id' => $contactId, 'MessageId' => '')));
+	}	
+		
 	public function CreateUpdateContacts($type, $contacts) {
 		# type = 'Create' or 'Update'
+		// this could be improved A LOT
 		$total = sizeof($contacts);
 		$pages = ceil($total / $this->RESULTS_PER_PAGE);
 		$remainder = $total % $this->RESULTS_PER_PAGE;
@@ -265,8 +255,39 @@ class CventClient extends SoapClient {
 		if(sizeof($passed) + sizeof($failed) != $total) throw new Exception("CventClient::CreateUpdateContacts:: Total pass+fails does not match total contacts.");
 		return array('passed' => $passed, 'failed' => $failed); 
 	}
-		
-	# utilities		
+
+	# helpers
+	private function RetrieveAllPages($objecttype, $ids) {
+		if(!is_array($ids)) $ids = array($ids); // safety measure
+		$results = array();
+		for($i=0; $i < count($ids); $i += $this->RESULTS_PER_PAGE) {
+			if ($this->debug) print "CventClient::RetrievePages:: retrieving $objecttype using Ids from $i to ".($i+$this->RESULTS_PER_PAGE)."<br/>";
+			$batch = array_slice($ids, $i, $i + $this->RESULTS_PER_PAGE);
+			$criteria = (object) array('ObjectType' => $objecttype, 'Ids' => $batch);
+			$tmp = $this->client->Retrieve($criteria);
+			if(is_array($tmp->RetrieveResult->CvObject)) {
+				$results = array_merge($results, $tmp->RetrieveResult->CvObject);
+			} else {
+				$results = array_merge($results, array($tmp->RetrieveResult->CvObject));
+			}
+		}
+		return $results;
+	}
+
+ 	public function SearchByFilter($objecttype, $type, $filters)  {
+		$response = $this->client->Search((object) array('ObjectType' => $objecttype, 'CvSearchObject' => (object) array('SearchType' => $type, 'Filter' => $filters)));
+		return $response;
+	}	
+}
+
+
+class SoapDebugClient extends SoapClient {
+	public function __doRequest($request, $location, $action, $version, $one_way = 0) {
+		//if (DEBUG) print htmlspecialchars($request);
+		flush();
+		return parent::__doRequest($request, $location, $action, $version);
+	}
+
 	public function webServiceDetails() {
 		print "<strong>Functions:</strong><pre>";
 		print_r($this->client->__getFunctions());
@@ -290,4 +311,6 @@ class CventClient extends SoapClient {
 		print htmlspecialchars($this->client->__getLastResponse());
 		print "</pre>";
 	}
+
 }
+
