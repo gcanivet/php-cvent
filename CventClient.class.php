@@ -191,8 +191,9 @@ class CventClient extends SoapClient {
 		
 	
 	# Create or Updates
+	
 	public function AddContactsToDistributionList($distId, $contactIds) {
-		if(!is_array($contactIds)) $contactIds = array($contactIds); // safety measurei, contactId must be CvObject type
+		if(!is_array($contactIds)) $contactIds = array($contactIds); // safety measure, contactId must be CvObject type
 		$response = $this->client->ManageDistributionListMembers((object) array('DistListId' => $distId, 'Action' => 'Add', 'CvObjects' => $contactIds));	
 		if(isset($response->ManageDistributionListMembersResult->ManageDistributionListResult)) return $response->ManageDistributionListMembersResult->ManageDistributionListResult;
 		return false;
@@ -203,10 +204,34 @@ class CventClient extends SoapClient {
 		$contactId =  $response->SearchResult->Id;
 		return $this->AddContactsToDistributionList($distId, array((object) array('Id' => $contactId, 'MessageId' => '')));
 	}	
+	public function CreateContactAndAddToDistributionList($contact, $distId) {	
+		// pre: contact is an array with appropriate contact fields 
+		$contacts = array($contact);	
+		$results = $this->CreateUpdateContacts('Create', $contacts);
+	 	print "<br/>create contacts<pre>";
+		print_r($results);
+		print "</pre><br/>";
 		
+		if(sizeof($results['passed']) == 1) { // new contact
+			$contactId = $results['passed'][0]['result']->Id;
+			print "contactId: ".$contactId;
+			return $this->AddContactsToDistributionList($distId, array((object) array('Id' => $contactId, 'MessageId' => '')));
+		} elseif (sizeof($results['failed']) == 1) { // error adding contact
+			$errcode = $results['failed'][0]['result']->Errors->Error[0]->Code;
+			if($errcode == 'CV40104' || $errcode == 'CV40103') { // contact already exists | duplicated contact object
+				$emailaddress = $results['failed'][0]['contact']['EmailAddress'];
+				print "emailaddress: ".$emailaddress;
+				return $this->AddContactToDistributionListByEmailAddress($distId, $emailaddress);		
+			}
+		} 
+		return false;
+	}
+
+	
 	public function CreateUpdateContacts($type, $contacts) {
 		# type = 'Create' or 'Update'
 		// this could be improved A LOT
+		if(!is_array($contacts)) $contacts = array($contacts);
 		$total = sizeof($contacts);
 		$pages = ceil($total / $this->RESULTS_PER_PAGE);
 		$remainder = $total % $this->RESULTS_PER_PAGE;
