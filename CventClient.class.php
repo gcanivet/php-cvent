@@ -2,13 +2,13 @@
 /*
 ** CventClient.class.php
 ** Author: github.com/gcanivet
-** Description: A php soap client for the Cvent API. 
+** Description: A php soap client for the Cvent API.
 **
 ** To Do:
 **     - add additional remote functions support
-**     - add logging capabilities	 
+**     - add logging capabilities
 **     - proper docs format
-**     
+**
 ** Notes:
 **     - Search - 25,000 IDs limit not handled
 **     - CreateContact, UpdateContact, DeleteContact, CreateContactGroup, TransferInvitee, and SendEmail - 200 object limit not handled
@@ -16,7 +16,7 @@
 ** ... Typicaly a limit of 25,000 ids returned, maximum 256 search filter, but depends on Client accounts
 **
 */
-ini_set('soap.wsdl_cache_enabled', 1); 
+ini_set('soap.wsdl_cache_enabled', 1);
 ini_set('soap.wsdl_cache_ttl', 86400); //default: 86400, in seconds
 
 class CventClient extends SoapClient {
@@ -26,29 +26,29 @@ class CventClient extends SoapClient {
 	public $debug = false;
 	public $MAX_FILTER_SIZE = 100; # 256 doesn't seem to work.
 	public $RESULTS_PER_PAGE = 200;
-	
+
 	public function CventClient() {
 	}
 
 	public function Login($acct, $username, $password) {
 		$this->client = new SoapDebugClient("https://api.cvent.com/soap/V200611.ASMX?WSDL", array('trace' => true, 'exceptions' => true));
 		$cache = true;
-		$file = 'cvent_api_session.txt';
-		if($cache && file_exists($file) && time() <= strtotime("+1 hour", $last = filemtime($file))) { 
+		$file = __DIR__.'/cvent_api_session.txt';
+		if($cache && file_exists($file) && time() <= strtotime("+1 hour", $last = filemtime($file))) {
 			# a valid session is cached, use it
 			if($this->debug) print 'CventClient::Session already exists.<br/>';
 			$data = file_get_contents($file);
 			$arr_response = array();
 			$arr_response = explode(',', $data);
 			$this->ServerURL = $arr_response[0];
-			$this->CventSessionHeader = $arr_response[1];					
+			$this->CventSessionHeader = $arr_response[1];
 		} else { # sessions expire 1hr after CREATION
 			if($this->debug) print 'CventClient::Session does not exist. Get new one.<br/>';
 			$params = array();
 			$params['AccountNumber'] = $acct;
 			$params['UserName']		= $username;
 			$params['Password']		= $password;
-			
+
 			$response = $this->client->Login($params);
 			if(!$response->LoginResult->LoginSuccess) {
 				throw new Exception("CventClient:: Login unsuccessful");
@@ -67,24 +67,24 @@ class CventClient extends SoapClient {
 		$this->client->__setSoapHeaders($header);
 		if($this->debug) print 'CventClient:: ServerURL: '.$this->ServerURL.', CventSessionHeader: '.$this->CventSessionHeader.'<br/>';
 	}
-	
+
 	public function DescribeGlobal() {
 		$response = $this->client->DescribeGlobal();
 		return $response;
 	}
-	
+
 	public function DescribeCvObject($objectTypes) {
 		$params->ObjectTypes = $objectTypes;
 		$response = $this->client->DescribeCvObject($params);
 		return $response;
-	}		
-	
+	}
+
 	public function GetEventById($eventId) {
-		$events = $this->RetrieveEvents($eventId);	
+		$events = $this->RetrieveEvents($eventId);
 		if(sizeof($events) != 1) throw new Exception('CventClient::GetEventById: EventId '.$eventId.' not found');
 		return $events[0];
 	}
-	
+
 	public function GetUpcomingEvents() {
 		// needs to be tested
 		$v = date('Y-m-d', strtotime('-14 days')).'T00:00:00'; // '2011-10-31T00:00:00';
@@ -92,25 +92,25 @@ class CventClient extends SoapClient {
 		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
 		return false;
 	}
-	
+
 	public function GetNumberOfRegistrations($eventId) {
 		// needs to be tested
 		$response = $this->SearchByFilter('Registration', 'AndSearch', array((object) array('Field' => 'EventId', 'Operator' => 'Equals', 'Value' => $eventId)));
 		if(isset($response->SearchResult->Id)) return count($response->SearchResult->Id);
 		return false;
 	}
-	
+
 	public function GetNumberOfGuests($eventId) {
 		// needs to be tested
 		$response = $this->SearchByFilter('Guest', 'AndSearch', array((object) array('Field' => 'EventId', 'Operator' => 'Equals', 'Value' => $eventId)));
 		if(isset($response->SearchResult->Id)) return count($response->SearchResult->Id);
 		return false;
 	}
-	
+
 	public function SearchAllDistributionLists() {
 		$response = $this->SearchByFilter('DistributionList', 'OrSearch', array(
 							(object) array('Field' => 'DistributionListName', 'Operator' => 'Equals', 'Value' => 'Something'),
-			      				(object) array('Field' => 'DistributionListName', 'Operator' => 'Not Equal to', 'Value' => 'Something')));
+							(object) array('Field' => 'DistributionListName', 'Operator' => 'Not Equal to', 'Value' => 'Something')));
 		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
 		return false;
 	}
@@ -120,7 +120,7 @@ class CventClient extends SoapClient {
 		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
 		return false;
 	}
-	
+
 	public function SearchContactsByGroupId($groupId) {
 		$response = $this->SearchByFilter('Contact', 'AndSearch', array((object) array('Field' => 'GroupId', 'Operator' => 'Equals', 'Value' => $groupId)));
 		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
@@ -141,9 +141,9 @@ class CventClient extends SoapClient {
 		if(isset($response->SearchResult->Id)) return $response->SearchResult->Id;
 		return false;
 	}
-	
 
-	# Retrieve 
+
+	# Retrieve
 	public function RetrieveEvents($ids) {
 		return $this->RetrieveAllPages('Event', $ids);
 	}
@@ -155,13 +155,13 @@ class CventClient extends SoapClient {
 		return $this->RetrieveAllPages('DistributionList', $ids);
 	}
 	public function RetrieveContactBySourceId($remaxid) {
-		$result = $this->SearchContactBySourceId($remaxid);		
+		$result = $this->SearchContactBySourceId($remaxid);
 		if($result === false) throw new Exception("CventClient::RetrieveContactBySourceId::$remaxid not found, cannot retrieve");
 		$ids[] = $result->SearchResult->Id;
-		$result = $this->RetrieveContacts($ids);		
+		$result = $this->RetrieveContacts($ids);
 		return $result;
 	}
-	
+
 	public function RetrieveContactIdsBySourceIds($sourceIds) {
 		// needs to be tested
 		// this returns Ids, not Objects, for consistency should be renamed SearchContactsBySourceIds($sourceIds)
@@ -169,10 +169,10 @@ class CventClient extends SoapClient {
 		$contactIds = array();
 		for($i = 0; $i < count($sourceIds); $i += $this->MAX_FILTER_SIZE) {
 			if ($this->debug) print "CventClient::RetrieveContactIdsBySourceIds:: retrieving contactIds from $i to ".($i + $this->MAX_FILTER_SIZE)."<br/>";
-			$batch = array_slice($sourceIds, $i, $i + $this->MAX_FILTER_SIZE);		
+			$batch = array_slice($sourceIds, $i, $i + $this->MAX_FILTER_SIZE);
 			$criteria = NULL;
 			$criteria->ObjectType = 'Contact';
-			$criteria->CvSearchObject->SearchType = 'OrSearch';	
+			$criteria->CvSearchObject->SearchType = 'OrSearch';
 			for($j=0; $j < sizeof($batch); $j++) {
 				$criteria->CvSearchObject->Filter[$j]->Field = 'SourceId';
 				$criteria->CvSearchObject->Filter[$j]->Operator = 'Equals';
@@ -186,15 +186,15 @@ class CventClient extends SoapClient {
 				$contactIds = array_merge($contactIds, array($tmp));
 			}
 		}
-		return $contactIds;			
+		return $contactIds;
 	}
-		
-	
+
+
 	# Create or Updates
-	
+
 	public function AddContactsToDistributionList($distId, $contactIds) {
 		if(!is_array($contactIds)) $contactIds = array($contactIds); // safety measure, contactId must be CvObject type
-		$response = $this->client->ManageDistributionListMembers((object) array('DistListId' => $distId, 'Action' => 'Add', 'CvObjects' => $contactIds));	
+		$response = $this->client->ManageDistributionListMembers((object) array('DistListId' => $distId, 'Action' => 'Add', 'CvObjects' => $contactIds));
 		if(isset($response->ManageDistributionListMembersResult->ManageDistributionListResult)) return $response->ManageDistributionListMembersResult->ManageDistributionListResult;
 		return false;
 	}
@@ -203,15 +203,15 @@ class CventClient extends SoapClient {
 		if(!isset($response->SearchResult->Id)) return false;
 		$contactId =  $response->SearchResult->Id;
 		return $this->AddContactsToDistributionList($distId, array((object) array('Id' => $contactId, 'MessageId' => '')));
-	}	
-	public function CreateContactAndAddToDistributionList($contact, $distId) {	
-		// pre: contact is an array with appropriate contact fields 
-		$contacts = array($contact);	
+	}
+	public function CreateContactAndAddToDistributionList($contact, $distId) {
+		// pre: contact is an array with appropriate contact fields
+		$contacts = array($contact);
 		$results = $this->CreateUpdateContacts('Create', $contacts);
 	 	print "<br/>create contacts<pre>";
 		print_r($results);
 		print "</pre><br/>";
-		
+
 		if(sizeof($results['passed']) == 1) { // new contact
 			$contactId = $results['passed'][0]['result']->Id;
 			print "contactId: ".$contactId;
@@ -221,13 +221,13 @@ class CventClient extends SoapClient {
 			if($errcode == 'CV40104' || $errcode == 'CV40103') { // contact already exists | duplicated contact object
 				$emailaddress = $results['failed'][0]['contact']['EmailAddress'];
 				print "emailaddress: ".$emailaddress;
-				return $this->AddContactToDistributionListByEmailAddress($distId, $emailaddress);		
+				return $this->AddContactToDistributionListByEmailAddress($distId, $emailaddress);
 			}
-		} 
+		}
 		return false;
 	}
 
-	
+
 	public function CreateUpdateContacts($type, $contacts) {
 		# type = 'Create' or 'Update'
 		// this could be improved A LOT
@@ -242,10 +242,10 @@ class CventClient extends SoapClient {
 			$y = $this->RESULTS_PER_PAGE;
 			if($pages == $i + 1) $y = $remainder;
 			if ($this->debug) print "CventClient::CreateUpdateContacts::Page $i, creating $y Ids starting at array index $x<br/>";
-			$batch = array_slice($contacts, $x, $y);		
+			$batch = array_slice($contacts, $x, $y);
 			$criteria =  NULL;
 			$tmp = NULL;
-			$criteria->Contacts = $batch;		
+			$criteria->Contacts = $batch;
 			# process batch
 			if($type == 'Create') {
 				$tmp = $this->client->CreateContact($criteria);
@@ -258,7 +258,7 @@ class CventClient extends SoapClient {
 			}
 			if(isset($tmp)) {
 				if(is_array($tmp)) {
-					$result = $tmp;				
+					$result = $tmp;
 				} else {
 					$result = array($tmp);
 				}
@@ -274,11 +274,11 @@ class CventClient extends SoapClient {
 					}
 				}
 				$failed = array_merge($failed, $fail);
-				$passed = array_merge($passed, $pass);				
-			} 
+				$passed = array_merge($passed, $pass);
+			}
 		}
 		if(sizeof($passed) + sizeof($failed) != $total) throw new Exception("CventClient::CreateUpdateContacts:: Total pass+fails does not match total contacts.");
-		return array('passed' => $passed, 'failed' => $failed); 
+		return array('passed' => $passed, 'failed' => $failed);
 	}
 
 	# helpers
@@ -287,7 +287,7 @@ class CventClient extends SoapClient {
 		$results = array();
 		for($i=0; $i < count($ids); $i += $this->RESULTS_PER_PAGE) {
 			if ($this->debug) print "CventClient::RetrievePages:: retrieving $objecttype using Ids from $i to ".($i+$this->RESULTS_PER_PAGE)."<br/>";
-			$batch = array_slice($ids, $i, $i + $this->RESULTS_PER_PAGE);
+			$batch = array_slice($ids, $i, $this->RESULTS_PER_PAGE);
 			$criteria = (object) array('ObjectType' => $objecttype, 'Ids' => $batch);
 			$tmp = $this->client->Retrieve($criteria);
 			if(is_array($tmp->RetrieveResult->CvObject)) {
@@ -302,7 +302,7 @@ class CventClient extends SoapClient {
  	public function SearchByFilter($objecttype, $type, $filters)  {
 		$response = $this->client->Search((object) array('ObjectType' => $objecttype, 'CvSearchObject' => (object) array('SearchType' => $type, 'Filter' => $filters)));
 		return $response;
-	}	
+	}
 }
 
 
@@ -317,7 +317,7 @@ class SoapDebugClient extends SoapClient {
 		print "<strong>Functions:</strong><pre>";
 		print_r($this->client->__getFunctions());
 		print "</pre>";
-		
+
 		print "<strong>Types:</strong><pre>";
 		print_r($this->client->__getTypes());
 		print "</pre>";
@@ -326,7 +326,7 @@ class SoapDebugClient extends SoapClient {
 		print "<pre>";
 		print htmlspecialchars($this->client->__getLastRequestHeaders());
 		print "</pre>";
-		print "<pre>";		
+		print "<pre>";
 		print htmlspecialchars($this->client->__getLastRequest());
 		print "</pre>";
 		print "<pre>";
@@ -336,6 +336,5 @@ class SoapDebugClient extends SoapClient {
 		print htmlspecialchars($this->client->__getLastResponse());
 		print "</pre>";
 	}
-
 }
-
+?>
